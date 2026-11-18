@@ -498,8 +498,23 @@ function load(){return INIT;}
 // recipient) into cdm_shares. Only the recipient (or the sender) can read or remove it.
 // The recipient's own login copies it into their own account on Accept. Nobody ever
 // writes into anyone else's account, and copies are fully independent afterward.
+// profiles/{uid} is a deliberately PUBLIC, minimal name+email registry that exists
+// only to power the share picker. The rules allow ANY signed-in user to read it,
+// whereas cdm_data/{uid} is readable only by its owner (or an admin) - so a
+// collection-wide read of cdm_data is refused for ordinary faculty and the picker
+// came up silently empty. Writes here are restricted by rules to the owner's own
+// uid. No course content is ever written to this collection.
+function upsertProfile(user){
+  if(!user||!user.uid)return;
+  firebase.firestore().collection("profiles").doc(user.uid).set({
+    uid:user.uid,
+    email:(user.email||"").toLowerCase(),
+    name:user.displayName||user.email||"",
+    lastActive:firebase.firestore.FieldValue.serverTimestamp()
+  },{merge:true}).catch(function(e){console.error("Profile registry upsert:",e);});
+}
 function loadFacultyDirectory(cb){
-  firebase.firestore().collection("cdm_data").get().then(function(s){
+  firebase.firestore().collection("profiles").get().then(function(s){
     var r=[];s.forEach(function(d){var x=d.data();if(!x||!x.email||!x.name)return;var em=(""+x.email).toLowerCase();r.push({uid:d.id,name:x.name,email:em});});
     r.sort(function(a,b){return a.name<b.name?-1:1;});cb(r);
   }).catch(function(e){console.error("Directory load:",e);cb([]);});
@@ -698,6 +713,7 @@ function save(d,cid,onStatus){
   if(onStatus)onStatus("saving");
   // Best-effort profile upsert (non-critical, does not affect save status).
   db.collection("cdm_data").doc(u.uid).set({uid:u.uid,email:u.email||"",name:u.displayName||"",lastActive:firebase.firestore.FieldValue.serverTimestamp()},{merge:true}).catch(function(e){console.error("Profile upsert:",e);});
+  upsertProfile(u);
   var ref=db.collection("cdm_data").doc(u.uid).collection("courses").doc(cid);
   var attempts=0,maxAttempts=4;
   function tryWrite(){
@@ -2760,6 +2776,7 @@ function Dashboard(pp){
             React.createElement("p",{style:{fontSize:13,color:"#666",lineHeight:1.5,marginBottom:14}},"Nothing appears on their dashboard until they accept, and the copy is clearly labeled as shared by you."),
             React.createElement("label",{style:{display:"block",fontSize:12.5,fontWeight:700,color:"#153A47",marginBottom:5}},"Choose a colleague"),
             facDir===null?React.createElement("div",{style:{fontSize:13,color:"#999",marginBottom:16}},"Loading colleagues\u2026"):
+            facDir.filter(function(f){return f.email!==(user.email||"").toLowerCase();}).length===0?React.createElement("div",{style:{fontSize:13,color:"#92400E",background:"#FFFBEB",border:"1px solid #FDE68A",borderRadius:10,padding:"12px 14px",marginBottom:16,lineHeight:1.5}},"No other colleagues are registered yet. Each person appears here once they have signed in to this sandbox at least once."):
             React.createElement("select",{value:shareSel,onChange:function(e){setShareSel(e.target.value);},style:{width:"100%",padding:"10px 12px",borderRadius:10,border:"1px solid #ddd",fontSize:14,marginBottom:16,background:"#fff"}},
               [React.createElement("option",{key:"_",value:""},"Select a faculty member\u2026")].concat(
                 facDir.filter(function(f){return f.email!==(user.email||"").toLowerCase();}).map(function(f){
@@ -2896,6 +2913,8 @@ useEffect(function(){
         name:user.displayName||"",
         lastActive:firebase.firestore.FieldValue.serverTimestamp()
       },{merge:true}).catch(function(e){console.error("Profile upsert:",e);});
+      // Also register in the public name+email registry that fills the share picker.
+      upsertProfile(user);
     }
     if(!user){setDataLoaded(false);setData(INIT);setStep(0);setCurrentCourseId(null);setShowDashboard(true);}
   });return function(){unsub();};
