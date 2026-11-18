@@ -1,0 +1,50 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() { return request.auth != null; }
+    function em() { return request.auth.token.email; }
+    function isAdmin() { return signedIn() && em() in ['appianintelligence@gmail.com']; }
+
+    match /profiles/{uid} {
+      allow read: if signedIn();
+      allow create, update: if signedIn() && request.auth.uid == uid;
+      allow delete: if isAdmin();
+    }
+
+    match /cdm_data/{userId} {
+      allow read: if signedIn() && (request.auth.uid == userId || isAdmin());
+      allow create, update: if signedIn() && (request.auth.uid == userId || isAdmin());
+      allow delete: if false;
+
+      match /courses/{courseId} {
+        allow read: if signedIn() && (request.auth.uid == userId || isAdmin());
+        allow create, update: if signedIn() && (request.auth.uid == userId || isAdmin());
+        allow delete: if signedIn() && (request.auth.uid == userId || isAdmin());
+
+        match /versions/{versionId} {
+          allow read: if signedIn() && (request.auth.uid == userId || isAdmin());
+          allow create: if signedIn() && (request.auth.uid == userId || isAdmin());
+          allow update, delete: if false;
+        }
+
+        match /comments/{commentId} {
+          allow read: if signedIn() && (request.auth.uid == userId || isAdmin());
+          allow create: if signedIn() && (request.auth.uid == userId || isAdmin());
+          allow update: if isAdmin();
+          allow delete: if isAdmin();
+        }
+      }
+    }
+
+    match /cdm_shares/{shareId} {
+      allow create: if signedIn()
+        && request.resource.data.fromUid == request.auth.uid
+        && request.resource.data.keys().hasAll(['fromUid','fromName','fromEmail','toEmail','courseName','cdmData','createdAt'])
+        && request.resource.data.keys().hasOnly(['fromUid','fromName','fromEmail','toEmail','courseName','cdmData','createdAt']);
+      allow read: if signedIn() && (resource.data.toEmail == em() || resource.data.fromUid == request.auth.uid);
+      allow delete: if signedIn() && (resource.data.toEmail == em() || resource.data.fromUid == request.auth.uid);
+      allow update: if false;
+    }
+  }
+}
