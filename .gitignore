@@ -1,0 +1,9 @@
+# macOS
+.DS_Store
+
+# Local Claude Code / dev-server config
+.claude/
+
+# Pre-sanitization rollback copies: these still contain real person names
+# and must never be published to this public repo.
+index_BACKUP_*.html
